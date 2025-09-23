@@ -1,330 +1,316 @@
-import React, { useState, useEffect } from 'react';
+import React, {
+    useState,
+    useEffect
+} from 'react';
 import {
-  Settings,
-  Key,
-  Save,
-  TestTube,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  RefreshCw,
-  Plus,
-  Building,
-  Code,
-  Link,
-  Copy,
-  ExternalLink,
-  Trash2,
-  Loader2,
+    Settings,
+    Key,
+    Save,
+    TestTube,
+    CheckCircle,
+    XCircle,
+    AlertCircle,
+    RefreshCw,
+    Plus,
+    Building,
+    Code,
+    Link,
+    Copy,
+    ExternalLink,
+    Trash2,
+    Loader2,
 } from 'lucide-react';
-
 interface MarketplaceConfig {
-  id: string;
-  name: string;
-  logo: string;
-  color: string;
-  bgColor: string;
-  isConnected: boolean;
-  lastSync: string | null;
-  status: 'connected' | 'disconnected' | 'error' | 'testing';
-  orderCount: number;
-  config?: {
-    storeId?: string; // editable (Ifood)
-    validationCode?: string; // display-only (Ifood)
-    bindingCode?: string; // generated / copyable (Ifood)
-    apiKey?: string;
-    webhookUrl?: string;
-  };
-}
-
-const SettingsPage: React.FC = () => {
-  // ---------- initial state (mocked) ----------
-  const [marketplaces, setMarketplaces] = useState<MarketplaceConfig[]>([
-    {
-      id: 'Ifood',
-      name: 'Ifood',
-      logo: '/ifood-seeklogo.png',
-      color: 'text-red-600',
-      bgColor: 'bg-red-600',
-      isConnected: false,
-      lastSync: null,
-      status: 'disconnected',
-      orderCount: 0,
-      config: {
-        storeId: '',
-        validationCode: '',
-        bindingCode: '',
-        webhookUrl: 'https://api.exemplo.com/webhook/Ifood'
-      }
-    },
-    {
-      id: 'rappi',
-      name: 'Rappi',
-      logo: '🛵',
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100',
-      isConnected: true,
-      lastSync: '2024-01-15T10:25:00Z',
-      status: 'connected',
-      orderCount: 23,
-      config: {
-        apiKey: 'rappi_api_key_***************',
-        webhookUrl: 'https://api.exemplo.com/webhook/rappi'
-      }
-    },
-    {
-      id: '99food',
-      name: '99Food',
-      logo: '🚗',
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-100',
-      isConnected: false,
-      lastSync: null,
-      status: 'disconnected',
-      orderCount: 0,
-      config: {
-        apiKey: '',
-        webhookUrl: 'https://api.exemplo.com/webhook/99food'
-      }
-    },
-    {
-      id: 'keeta',
-      name: 'Keeta',
-      logo: '🏍️',
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
-      isConnected: false,
-      lastSync: null,
-      status: 'disconnected',
-      orderCount: 0,
-      config: {
-        apiKey: '',
-        webhookUrl: 'https://api.exemplo.com/webhook/keeta'
-      }
-    }
-  ]);
-
-  const [selectedMarketplaceId, setSelectedMarketplaceId] = useState<string>('Ifood');
-  const selectedMarketplace = marketplaces.find(m => m.id === selectedMarketplaceId) || null;
-
-  // UI state
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [tempValue, setTempValue] = useState<string>('');
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [isLoadingValidation, setIsLoadingValidation] = useState(false);
-  const [isGeneratingBinding, setIsGeneratingBinding] = useState(false);
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
-  const [showApiKeys, setShowApiKeys] = useState<{ [key: string]: boolean }>({});
-
-  // ---------- helpers ----------
-  const formatLastSync = (dateString: string | null) => {
-    if (!dateString) return 'Nunca sincronizado';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'connected':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'error':
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      case 'testing':
-        return <RefreshCw className="h-5 w-5 text-orange-500 animate-spin" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-400" />;
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'connected': return 'Conectado';
-      case 'error': return 'Erro';
-      case 'testing': return 'Testando...';
-      default: return 'Desconectado';
-    }
-  };
-
-  const showNotification = (type: 'success' | 'error', message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3500);
-  };
-
-  // ---------- CRUD UI helpers ----------
-  const startEditing = (field: string, currentValue = '') => {
-    setEditingField(field);
-    setTempValue(currentValue);
-  };
-
-  const cancelEditing = () => {
-    setEditingField(null);
-    setTempValue('');
-  };
-
-  const saveField = (field: string) => {
-    if (!selectedMarketplace) return;
-    setMarketplaces(prev => prev.map(mp =>
-      mp.id === selectedMarketplace.id ? {
-        ...mp,
-        config: {
-          ...mp.config,
-          [field]: tempValue
-        },
-        // if storeId set, consider it a possible connected flag (simplified)
-        isConnected: field === 'apiKey' || field === 'storeId' ? tempValue.length > 0 : mp.isConnected
-      } : mp
-    ));
-    setEditingField(null);
-    setTempValue('');
-    showNotification('success', 'Campo atualizado com sucesso!');
-  };
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      showNotification('success', 'Copiado para a área de transferência!');
-    } catch (err) {
-      showNotification('error', 'Não foi possível copiar');
-    }
-  };
-
-  // ---------- Ifood specific flows ----------
-  // Simula chamada API para buscar código de validação a partir do storeId
-  const handleGenerateValidationCode = async () => {
-    if (!selectedMarketplace || !selectedMarketplace.config?.storeId?.trim()) {
-      showNotification('error', 'Informe o ID da loja antes de gerar o código');
-      return;
-    }
-
-    setIsLoadingValidation(true);
-    try {
-      // Simulação: aqui você chamaria sua API backend que conversa com Ifood
-      await new Promise(res => setTimeout(res, 1200));
-      const validationCode = `${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-
-      setMarketplaces(prev => prev.map(mp =>
-        mp.id === selectedMarketplace.id ? {
-          ...mp,
-          config: {
-            ...mp.config,
-            validationCode
-          }
-        } : mp
-      ));
-
-      showNotification('success', 'Código de validação gerado');
-    } catch (err) {
-      console.error(err);
-      showNotification('error', 'Erro ao gerar código de validação');
-    } finally {
-      setIsLoadingValidation(false);
-    }
-  };
-
-  // Simula geração de código de vínculo (binding code)
-  const generateBindingCode = async () => {
-    if (!selectedMarketplace || !selectedMarketplace.config?.storeId) {
-      showNotification('error', 'Configure o ID da loja primeiro');
-      return;
-    }
-
-    setIsGeneratingBinding(true);
-    try {
-      await new Promise(res => setTimeout(res, 900));
-      const bindingCode = `${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-
-      setMarketplaces(prev => prev.map(mp =>
-        mp.id === selectedMarketplace.id ? {
-          ...mp,
-          config: {
-            ...mp.config,
-            bindingCode
-          }
-        } : mp
-      ));
-      showNotification('success', 'Código de vínculo gerado');
-    } catch (err) {
-      console.error(err);
-      showNotification('error', 'Erro ao gerar código de vínculo');
-    } finally {
-      setIsGeneratingBinding(false);
-    }
-  };
-
-  // Testa conexão / sincroniza (simulação)
-  const testConnection = async (marketplaceId: string) => {
-    setIsTestingConnection(true);
-    setMarketplaces(prev => prev.map(mp => mp.id === marketplaceId ? { ...mp, status: 'testing' } : mp));
-    try {
-      await new Promise(res => setTimeout(res, 1100));
-      setMarketplaces(prev => prev.map(mp => {
-        if (mp.id !== marketplaceId) return mp;
-        const hasCreds = !!(mp.config?.apiKey || mp.config?.storeId || mp.config?.bindingCode);
-        return {
-          ...mp,
-          status: hasCreds ? 'connected' : 'error',
-          lastSync: hasCreds ? new Date().toISOString() : mp.lastSync,
-          isConnected: hasCreds
-        };
-      }));
-      showNotification('success', 'Sincronização finalizada');
-    } catch (err) {
-      console.error(err);
-      showNotification('error', 'Erro ao sincronizar');
-    } finally {
-      setIsTestingConnection(false);
-    }
-  };
-
-  // Add / remove marketplace helpers
-  const addMarketplace = () => {
-    const newMarketplace: MarketplaceConfig = {
-      id: `marketplace_${Date.now()}`,
-      name: 'Novo Marketplace',
-      logo: '📱',
-      color: 'text-gray-600',
-      bgColor: 'bg-gray-100',
-      isConnected: false,
-      lastSync: null,
-      status: 'disconnected',
-      orderCount: 0,
-      config: { apiKey: '', webhookUrl: '' }
+    id: string;
+    name: string;
+    logo: string;
+    color: string;
+    bgColor: string;
+    isConnected: boolean;
+    lastSync: string | null;
+    status: 'connected' | 'disconnected' | 'error' | 'testing';
+    orderCount: number;
+    config ? : {
+        storeId ? : string; // editable (Ifood)
+        validationCode ? : string; // display-only (Ifood)
+        bindingCode ? : string; // generated / copyable (Ifood)
+        apiKey ? : string;
+        webhookUrl ? : string;
     };
-    setMarketplaces(prev => [...prev, newMarketplace]);
-    setSelectedMarketplaceId(newMarketplace.id);
-    showNotification('success', 'Marketplace adicionado');
-  };
-
-  const removeMarketplace = (id: string) => {
-    if (!window.confirm('Remover marketplace?')) return;
-    setMarketplaces(prev => prev.filter(p => p.id !== id));
-    if (selectedMarketplaceId === id) {
-      setSelectedMarketplaceId(marketplaces[0]?.id || '');
-    }
-    showNotification('success', 'Marketplace removido');
-  };
-
-  // Toggle show API key
-  const toggleShowApiKey = (id: string) => {
-    setShowApiKeys(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  // ---------- effects ----------
-  useEffect(() => {
-    // Ensure selectedMarketplaceId exists
-    if (!marketplaces.find(m => m.id === selectedMarketplaceId) && marketplaces.length > 0) {
-      setSelectedMarketplaceId(marketplaces[0].id);
-    }
-  }, [marketplaces, selectedMarketplaceId]);
-
-  // ---------- render ----------
-  return (
-    <div className="min-h-screen bg-gray-50">
+}
+const SettingsPage: React.FC = () => {
+    // ---------- initial state (mocked) ----------
+    const [marketplaces, setMarketplaces] = useState < MarketplaceConfig[] > ([{
+        id: 'Ifood',
+        name: 'Ifood',
+        logo: '/ifood-seeklogo.png',
+        color: 'text-red-600',
+        bgColor: 'bg-red-600',
+        isConnected: false,
+        lastSync: null,
+        status: 'disconnected',
+        orderCount: 0,
+        config: {
+            storeId: '',
+            validationCode: '',
+            bindingCode: '',
+            webhookUrl: 'https://api.exemplo.com/webhook/Ifood'
+        }
+    }, {
+        id: 'rappi',
+        name: 'Rappi',
+        logo: '🛵',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+        isConnected: true,
+        lastSync: '2024-01-15T10:25:00Z',
+        status: 'connected',
+        orderCount: 23,
+        config: {
+            apiKey: 'rappi_api_key_***************',
+            webhookUrl: 'https://api.exemplo.com/webhook/rappi'
+        }
+    }, {
+        id: '99food',
+        name: '99Food',
+        logo: '🚗',
+        color: 'text-yellow-600',
+        bgColor: 'bg-yellow-100',
+        isConnected: false,
+        lastSync: null,
+        status: 'disconnected',
+        orderCount: 0,
+        config: {
+            apiKey: '',
+            webhookUrl: 'https://api.exemplo.com/webhook/99food'
+        }
+    }, {
+        id: 'keeta',
+        name: 'Keeta',
+        logo: '🏍️',
+        color: 'text-purple-600',
+        bgColor: 'bg-purple-100',
+        isConnected: false,
+        lastSync: null,
+        status: 'disconnected',
+        orderCount: 0,
+        config: {
+            apiKey: '',
+            webhookUrl: 'https://api.exemplo.com/webhook/keeta'
+        }
+    }]);
+    const [selectedMarketplaceId, setSelectedMarketplaceId] = useState < string > ('Ifood');
+    const selectedMarketplace = marketplaces.find(m => m.id === selectedMarketplaceId) || null;
+    // UI state
+    const [editingField, setEditingField] = useState < string | null > (null);
+    const [tempValue, setTempValue] = useState < string > ('');
+    const [notification, setNotification] = useState < {
+        type: 'success' | 'error';message: string
+    } | null > (null);
+    const [isLoadingValidation, setIsLoadingValidation] = useState(false);
+    const [isGeneratingBinding, setIsGeneratingBinding] = useState(false);
+    const [isTestingConnection, setIsTestingConnection] = useState(false);
+    const [showApiKeys, setShowApiKeys] = useState < {
+        [key: string]: boolean
+    } > ({});
+    // ---------- helpers ----------
+    const formatLastSync = (dateString: string | null) => {
+        if (!dateString) return 'Nunca sincronizado';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('pt-BR', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+    const getStatusIcon = (status: string) => {
+        switch (status) {
+            case 'connected':
+                return <CheckCircle className="h-5 w-5 text-green-500" />;
+            case 'error':
+                return <XCircle className="h-5 w-5 text-red-500" />;
+            case 'testing':
+                return <RefreshCw className="h-5 w-5 text-orange-500 animate-spin" />;
+            default:
+                return <AlertCircle className="h-5 w-5 text-gray-400" />;
+        }
+    };
+    const getStatusText = (status: string) => {
+        switch (status) {
+            case 'connected':
+                return 'Conectado';
+            case 'error':
+                return 'Erro';
+            case 'testing':
+                return 'Testando...';
+            default:
+                return 'Desconectado';
+        }
+    };
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({
+            type,
+            message
+        });
+        setTimeout(() => setNotification(null), 3500);
+    };
+    // ---------- CRUD UI helpers ----------
+    const startEditing = (field: string, currentValue = '') => {
+        setEditingField(field);
+        setTempValue(currentValue);
+    };
+    const cancelEditing = () => {
+        setEditingField(null);
+        setTempValue('');
+    };
+    const saveField = (field: string) => {
+        if (!selectedMarketplace) return;
+        setMarketplaces(prev => prev.map(mp => mp.id === selectedMarketplace.id ? {
+            ...mp,
+            config: {
+                ...mp.config,
+                [field]: tempValue
+            },
+            // if storeId set, consider it a possible connected flag (simplified)
+            isConnected: field === 'apiKey' || field === 'storeId' ? tempValue.length > 0 : mp.isConnected
+        } : mp));
+        setEditingField(null);
+        setTempValue('');
+        showNotification('success', 'Campo atualizado com sucesso!');
+    };
+    const copyToClipboard = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            showNotification('success', 'Copiado para a área de transferência!');
+        } catch (err) {
+            showNotification('error', 'Não foi possível copiar');
+        }
+    };
+    // ---------- Ifood specific flows ----------
+    // Simula chamada API para buscar código de validação a partir do storeId
+    const handleGenerateValidationCode = async () => {
+        if (!selectedMarketplace || !selectedMarketplace.config?.storeId?.trim()) {
+            showNotification('error', 'Informe o ID da loja antes de gerar o código');
+            return;
+        }
+        setIsLoadingValidation(true);
+        try {
+            // Simulação: aqui você chamaria sua API backend que conversa com Ifood
+            await new Promise(res => setTimeout(res, 1200));
+            const validationCode = `${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+            setMarketplaces(prev => prev.map(mp => mp.id === selectedMarketplace.id ? {
+                ...mp,
+                config: {
+                    ...mp.config,
+                    validationCode
+                }
+            } : mp));
+            showNotification('success', 'Código de validação gerado');
+        } catch (err) {
+            console.error(err);
+            showNotification('error', 'Erro ao gerar código de validação');
+        } finally {
+            setIsLoadingValidation(false);
+        }
+    };
+    // Simula geração de código de vínculo (binding code)
+    const generateBindingCode = async () => {
+        if (!selectedMarketplace || !selectedMarketplace.config?.storeId) {
+            showNotification('error', 'Configure o ID da loja primeiro');
+            return;
+        }
+        setIsGeneratingBinding(true);
+        try {
+            await new Promise(res => setTimeout(res, 900));
+            const bindingCode = `${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+            setMarketplaces(prev => prev.map(mp => mp.id === selectedMarketplace.id ? {
+                ...mp,
+                config: {
+                    ...mp.config,
+                    bindingCode
+                }
+            } : mp));
+            showNotification('success', 'Código de vínculo gerado');
+        } catch (err) {
+            console.error(err);
+            showNotification('error', 'Erro ao gerar código de vínculo');
+        } finally {
+            setIsGeneratingBinding(false);
+        }
+    };
+    // Testa conexão / sincroniza (simulação)
+    const testConnection = async (marketplaceId: string) => {
+        setIsTestingConnection(true);
+        setMarketplaces(prev => prev.map(mp => mp.id === marketplaceId ? {
+            ...mp,
+            status: 'testing'
+        } : mp));
+        try {
+            await new Promise(res => setTimeout(res, 1100));
+            setMarketplaces(prev => prev.map(mp => {
+                if (mp.id !== marketplaceId) return mp;
+                const hasCreds = !!(mp.config?.apiKey || mp.config?.storeId || mp.config?.bindingCode);
+                return {
+                    ...mp,
+                    status: hasCreds ? 'connected' : 'error',
+                    lastSync: hasCreds ? new Date().toISOString() : mp.lastSync,
+                    isConnected: hasCreds
+                };
+            }));
+            showNotification('success', 'Sincronização finalizada');
+        } catch (err) {
+            console.error(err);
+            showNotification('error', 'Erro ao sincronizar');
+        } finally {
+            setIsTestingConnection(false);
+        }
+    };
+    // Add / remove marketplace helpers
+    const addMarketplace = () => {
+        const newMarketplace: MarketplaceConfig = {
+            id: `marketplace_${Date.now()}`,
+            name: 'Novo Marketplace',
+            logo: '📱',
+            color: 'text-gray-600',
+            bgColor: 'bg-gray-100',
+            isConnected: false,
+            lastSync: null,
+            status: 'disconnected',
+            orderCount: 0,
+            config: {
+                apiKey: '',
+                webhookUrl: ''
+            }
+        };
+        setMarketplaces(prev => [...prev, newMarketplace]);
+        setSelectedMarketplaceId(newMarketplace.id);
+        showNotification('success', 'Marketplace adicionado');
+    };
+    const removeMarketplace = (id: string) => {
+        if (!window.confirm('Remover marketplace?')) return;
+        setMarketplaces(prev => prev.filter(p => p.id !== id));
+        if (selectedMarketplaceId === id) {
+            setSelectedMarketplaceId(marketplaces[0]?.id || '');
+        }
+        showNotification('success', 'Marketplace removido');
+    };
+    // Toggle show API key
+    const toggleShowApiKey = (id: string) => {
+        setShowApiKeys(prev => ({
+            ...prev,
+            [id]: !prev[id]
+        }));
+    };
+    // ---------- effects ----------
+    useEffect(() => {
+        // Ensure selectedMarketplaceId exists
+        if (!marketplaces.find(m => m.id === selectedMarketplaceId) && marketplaces.length > 0) {
+            setSelectedMarketplaceId(marketplaces[0].id);
+        }
+    }, [marketplaces, selectedMarketplaceId]);
+    // ---------- render ----------
+    return (<div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-gradient-to-r from-slate-700 to-slate-800 py-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -361,6 +347,7 @@ const SettingsPage: React.FC = () => {
   <Plus className="h-4 w-4" /> Adicionar
 </button>
 */}
+
             </div>
 
             <div className="space-y-4">
@@ -692,8 +679,6 @@ const SettingsPage: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
-  );
+    </div>);
 };
-
 export default SettingsPage;
