@@ -341,6 +341,7 @@ const SettingsPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-gray-900">Marketplaces Conectados</h2>
               {/* 
 <button
+
   onClick={addMarketplace}
   className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 flex items-center gap-2"
 >
